@@ -6,11 +6,15 @@ build-backend = "setuptools.build_meta"
 name = "ezgrid"
 version = "0.0.1"
 readme = "README.md"
-description = "A package to simplify the generation of point grids for spatial analysis"
+description = "A package to simplify point allocation within polygons for spatial analysis"
 keywords = ["GIS", "geopandas",]
 requires-python = ">=3.9"
 dependencies = [
-    "geopandas>=0.14.*",
+    "geocube",
+    "geopandas>=0.14",
+    "matplotlib",
+    "numpy",
+    "scikit-learn",
 ]
 
 [tool.setuptools.packages.find]
