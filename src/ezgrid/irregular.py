@@ -1,3 +1,4 @@
+from typing import Optional
 import numpy as np
 from geocube.api.core import make_geocube
 from sklearn.cluster import KMeans
@@ -7,25 +8,36 @@ import geopandas as gpd
 
 
 def optimize_coverage(
-    polygon: gpd.GeoDataFrame, n_points: int = 10, resolution: float = 5, debug: bool = False
+    polygon: gpd.GeoDataFrame,
+    n_points: int = 10,
+    buffer: Optional[float] = None,
+    resolution: float = 5,
+    debug: bool = False,
 ) -> gpd.GeoDataFrame:
     """
     Create a representative sampling of a polygon using KMeans clustering.
 
     Args:
         polygon (gpd.GeoDataFrame): Polygon to sample.
-        n_points (int): Number of sampling points.
-        resolution (float): Resolution of the rasterized polygon used for clustering.
-        debug (bool): If True, return the cluster labels as a DataArray together with the sampling points.
+        n_points (int): Number of sampling points. Defaults to 10.
+        buffer (Optional[float]): Buffer to apply to the polygon before sampling. Using a negative value will
+        shrink the polygon and avoid points very close to polygon edges. Defaults to None.
+        resolution (float): Resolution of the rasterized polygon used for clustering. Defaults to 5.
+        debug (bool): If True, return the cluster labels as a DataArray together with the sampling points. Defaults to False.
 
     Returns:
         gpd.GeoDataFrame: Sampling points.
     """
     assert len(polygon) == 1, "Only one polygon is allowed"
     assert polygon.crs.is_projected, "CRS must be projected"
+    # Avoid modifying the input polygon
+    polygon = polygon.copy()
     # Prepare input data
     polygon = polygon[["geometry"]]
     polygon["auxiliary_col"] = 1
+    # Apply buffer
+    if buffer is not None:
+        polygon["geometry"] = polygon["geometry"].buffer(buffer)
     # Rasterize
     polygon_raster = make_geocube(vector_data=polygon, resolution=(resolution, -resolution))
     polygon_raster = polygon_raster["auxiliary_col"]
@@ -57,3 +69,29 @@ def optimize_coverage(
         return sampling_points, polygon_clusters_raster
 
     return sampling_points
+
+
+def random_sampling(
+    polygon: gpd.GeoDataFrame, n_points: int = 10, buffer: Optional[float] = None
+) -> gpd.GeoDataFrame:
+    """
+    Create a random sampling within a polygon.
+    This function is a wrapper around the `sample_points` method from the `geopandas` library.
+
+    Args:
+        polygon (gpd.GeoDataFrame): Polygon to sample.
+        n_points (int): Number of sampling points. Defaults to 10.
+        buffer (Optional[float]): Buffer to apply to the polygon before sampling. Using a negative value will
+        shrink the polygon and avoid points very close to polygon edges. Defaults to None.
+
+    Returns:
+        gpd.GeoDataFrame: Sampling points.
+    """
+    assert len(polygon) == 1, "Only one polygon is allowed"
+    assert polygon.crs.is_projected, "CRS must be projected"
+    # Avoid modifying the input polygon
+    polygon = polygon.copy()
+    # Apply buffer
+    if buffer is not None:
+        polygon["geometry"] = polygon["geometry"].buffer(buffer)
+    return polygon.sample_points(size=n_points, method="uniform", rng=0)

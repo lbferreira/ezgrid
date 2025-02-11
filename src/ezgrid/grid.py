@@ -6,7 +6,49 @@ import shapely
 from shapely.geometry import Point
 
 
-def find_polygon_angle(polygon: gpd.GeoSeries) -> float:
+def optimized_grid(
+    polygon: gpd.GeoSeries,
+    points_dist: float,
+    buffer: Optional[float] = None,
+    n_trials: int = 200,
+    max_offset: Optional[float] = None,
+    simplify: float = 1,
+) -> gpd.GeoDataFrame:
+    """Create a grid of points within a polygon, optimized to cover the polygon as much as possible.
+    The grid is created to be aligned with the longest side of the polygon.
+
+    Args:
+        polygon (gpd.GeoSeries): Polygon to cover with the grid.
+        points_dist (float): Distance between points in the grid.
+        buffer (Optional[float], optional): a negative value will shrink the polygon and avoid points very close to polygon edges. Defaults to None.
+        n_trials (int, optional): Number of trials for the optimization. Defaults to 200.
+        max_offset (Optional[float], optional): Maximum offset to consider when optimizing the grid. If None, it is automatically defined. Defaults to None.
+        simplify (float, optional): simplification factor for the polygon before optimization. It allows a faster optimization. Defaults to 1.
+
+    Returns:
+        gpd.GeoDataFrame: Grid of points optimized to cover the polygon following the alignment of the longest side.
+    """
+    angle = _find_polygon_angle(polygon)
+    polygon_rotated = polygon.rotate(angle)
+    grid_rotated = create_grid(polygon_rotated, points_dist=points_dist)
+    grid_rotated_opt = _optimize_grid(
+        grid_rotated, points_dist, polygon_rotated, buffer, max_offset, n_trials, simplify=simplify
+    )
+    grid_opt = _revert_rotation(grid_rotated_opt, angle, polygon)
+    return grid_opt
+
+
+def create_grid(polygon: gpd.GeoSeries, points_dist: float) -> gpd.GeoDataFrame:
+    xmin, ymin, xmax, ymax = polygon.total_bounds
+    x_coords = np.arange(xmin, xmax, points_dist)
+    y_coords = np.arange(ymin, ymax, points_dist)
+    # Convert to Point objects
+    points = [Point(x, y) for x in x_coords for y in y_coords]
+    # To GeoDataFrame
+    return gpd.GeoDataFrame(geometry=points, crs=polygon.crs)
+
+
+def _find_polygon_angle(polygon: gpd.GeoSeries) -> float:
     # Find the largest distance between vertices
     if len(polygon) > 1:
         raise ValueError("The input GeoSeries should contain only one polygon")
@@ -32,16 +74,6 @@ def find_polygon_angle(polygon: gpd.GeoSeries) -> float:
     if angle is None:
         raise Exception("Something went wrong when computing the angle of the polygon.")
     return angle
-
-
-def create_grid(polygon: gpd.GeoSeries, points_dist: float) -> gpd.GeoDataFrame:
-    xmin, ymin, xmax, ymax = polygon.total_bounds
-    x_coords = np.arange(xmin, xmax, points_dist)
-    y_coords = np.arange(ymin, ymax, points_dist)
-    # Convert to Point objects
-    points = [Point(x, y) for x in x_coords for y in y_coords]
-    # To GeoDataFrame
-    return gpd.GeoDataFrame(geometry=points, crs=polygon.crs)
 
 
 def _error_function(
@@ -85,22 +117,22 @@ def _error_function(
     return error
 
 
-def optimize_grid(
+def _optimize_grid(
     grid: gpd.GeoDataFrame,
     points_dist: float,
     polygon: gpd.GeoSeries,
     buffer: Optional[float] = None,
     max_offset: Optional[float] = None,
-    n_trials=200,
+    n_trials: int = 200,
+    simplify: float = 1,
 ) -> gpd.GeoDataFrame:
     assert len(polygon) == 1, "The input GeoSeries should contain only one polygon"
     assert grid.crs == polygon.crs, "The grid and the polygon should have the same CRS"
     buffer = -points_dist / 4 if buffer is None else buffer
     max_offset = 0.75 * points_dist if max_offset is None else max_offset
 
-    # TODO: SImplify is hard-coded to 1, should be a parameter
-
     polygon_geom = polygon.buffer(buffer).iloc[0]
+    polygon_geom_simplified = polygon_geom.simplify(simplify)
     x_coords = grid.geometry.x.values
     y_coords = grid.geometry.y.values
 
@@ -118,7 +150,7 @@ def optimize_grid(
                 x_coords,
                 y_coords,
                 points_dist,
-                polygon_geom.simplify(1),
+                polygon_geom_simplified,
             )
             if error < min_error:
                 min_error = error
@@ -136,7 +168,7 @@ def optimize_grid(
     return grid_opt
 
 
-def revert_rotation(
+def _revert_rotation(
     grid_rotated: gpd.GeoDataFrame, angle: float, polygon_rotated: gpd.GeoSeries
 ) -> gpd.GeoDataFrame:
     # pol_rot_center_x = polygon_rotated.centroid.x[0]
@@ -149,20 +181,3 @@ def revert_rotation(
         -angle, origin=(pol_rot_center_x, pol_rot_center_y)
     )
     return grid_reverted
-
-
-def create_optimized_grid(
-    polygon: gpd.GeoSeries,
-    points_dist: float,
-    buffer: Optional[float] = None,
-    n_trials: int = 200,
-    max_offset: Optional[float] = None,
-) -> gpd.GeoDataFrame:
-    angle = find_polygon_angle(polygon)
-    polygon_rotated = polygon.rotate(angle)
-    grid_rotated = create_grid(polygon_rotated, points_dist=points_dist)
-    grid_rotated_opt = optimize_grid(
-        grid_rotated, points_dist, polygon_rotated, buffer, max_offset, n_trials
-    )
-    grid_opt = revert_rotation(grid_rotated_opt, angle, polygon)
-    return grid_opt
