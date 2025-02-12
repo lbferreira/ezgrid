@@ -11,7 +11,7 @@ def optimize_coverage(
     polygon: gpd.GeoDataFrame,
     n_points: int = 10,
     buffer: Optional[float] = None,
-    resolution: float = 5,
+    resolution: float = 1,
     debug: bool = False,
 ) -> gpd.GeoDataFrame:
     """
@@ -22,7 +22,7 @@ def optimize_coverage(
         n_points (int): Number of sampling points. Defaults to 10.
         buffer (Optional[float]): Buffer to apply to the polygon before sampling. Using a negative value will
         shrink the polygon and avoid points very close to polygon edges. Defaults to None.
-        resolution (float): Resolution of the rasterized polygon used for clustering. Defaults to 5.
+        resolution (float): Resolution of the rasterized polygon used for clustering. It is in the same unit of the input data. Defaults to 1.
         debug (bool): If True, return the cluster labels as a DataArray together with the sampling points. Defaults to False.
 
     Returns:
