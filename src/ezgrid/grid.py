@@ -9,7 +9,7 @@ from shapely.geometry import Point
 def optimized_grid(
     polygon: gpd.GeoSeries,
     points_dist: float,
-    buffer: Optional[float] = None,
+    min_dist_edges: Optional[float] = None,
     n_trials: int = 200,
     max_offset: Optional[float] = None,
     simplify: float = 1,
@@ -20,7 +20,8 @@ def optimized_grid(
     Args:
         polygon (gpd.GeoSeries): Polygon to cover with the grid.
         points_dist (float): Distance between points in the grid.
-        buffer (Optional[float], optional): a negative value will shrink the polygon and avoid points very close to polygon edges. Defaults to None.
+        min_dist_edges (Optional[float], optional): minimum distance to polygon edges. If None,
+        it is automatically defined. Defaults to None.
         n_trials (int, optional): Number of trials for the optimization. Defaults to 200.
         max_offset (Optional[float], optional): Maximum offset to consider when optimizing the grid. If None, it is automatically defined. Defaults to None.
         simplify (float, optional): simplification factor for the polygon before optimization. It allows a faster optimization. Defaults to 1.
@@ -32,7 +33,7 @@ def optimized_grid(
     polygon_rotated = polygon.rotate(angle)
     grid_rotated = create_grid(polygon_rotated, points_dist=points_dist)
     grid_rotated_opt = _optimize_grid(
-        grid_rotated, points_dist, polygon_rotated, buffer, max_offset, n_trials, simplify=simplify
+        grid_rotated, points_dist, polygon_rotated, min_dist_edges, max_offset, n_trials, simplify=simplify
     )
     grid_opt = _revert_rotation(grid_rotated_opt, angle, polygon)
     return grid_opt
@@ -121,17 +122,18 @@ def _optimize_grid(
     grid: gpd.GeoDataFrame,
     points_dist: float,
     polygon: gpd.GeoSeries,
-    buffer: Optional[float] = None,
+    min_dist_edges: Optional[float] = None,
     max_offset: Optional[float] = None,
     n_trials: int = 200,
     simplify: float = 1,
 ) -> gpd.GeoDataFrame:
     assert len(polygon) == 1, "The input GeoSeries should contain only one polygon"
     assert grid.crs == polygon.crs, "The grid and the polygon should have the same CRS"
-    buffer = -points_dist / 4 if buffer is None else buffer
+    assert min_dist_edges is None or min_dist_edges >= 0, "min_dist_edges should be None or a positive value"
+    min_dist_edges = points_dist / 4 if min_dist_edges is None else min_dist_edges
     max_offset = 0.75 * points_dist if max_offset is None else max_offset
 
-    polygon_geom = polygon.buffer(buffer).iloc[0]
+    polygon_geom = polygon.buffer(-min_dist_edges).iloc[0]
     polygon_geom_simplified = polygon_geom.simplify(simplify)
     x_coords = grid.geometry.x.values
     y_coords = grid.geometry.y.values

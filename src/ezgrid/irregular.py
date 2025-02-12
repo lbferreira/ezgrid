@@ -10,7 +10,7 @@ import geopandas as gpd
 def optimize_coverage(
     polygon: gpd.GeoDataFrame,
     n_points: int = 10,
-    buffer: Optional[float] = None,
+    min_dist_edges: Optional[float] = None,
     resolution: float = 1,
     debug: bool = False,
 ) -> gpd.GeoDataFrame:
@@ -20,8 +20,8 @@ def optimize_coverage(
     Args:
         polygon (gpd.GeoDataFrame): Polygon to sample.
         n_points (int): Number of sampling points. Defaults to 10.
-        buffer (Optional[float]): Buffer to apply to the polygon before sampling. Using a negative value will
-        shrink the polygon and avoid points very close to polygon edges. Defaults to None.
+        min_dist_edges (Optional[float]): Minimum distance to polygon edges. If None, no minimum distance is enforced.
+        It has the same unit as the input data. Defaults to None.
         resolution (float): Resolution of the rasterized polygon used for clustering. It is in the same unit of the input data. Defaults to 1.
         debug (bool): If True, return the cluster labels as a DataArray together with the sampling points. Defaults to False.
 
@@ -30,14 +30,15 @@ def optimize_coverage(
     """
     assert len(polygon) == 1, "Only one polygon is allowed"
     assert polygon.crs.is_projected, "CRS must be projected"
+    assert min_dist_edges is None or min_dist_edges >= 0, "min_dist_edges must be None or a positive value"
     # Avoid modifying the input polygon
     polygon = polygon.copy()
     # Prepare input data
     polygon = polygon[["geometry"]]
     polygon["auxiliary_col"] = 1
     # Apply buffer
-    if buffer is not None:
-        polygon["geometry"] = polygon["geometry"].buffer(buffer)
+    if min_dist_edges is not None:
+        polygon["geometry"] = polygon["geometry"].buffer(-min_dist_edges)
     # Rasterize
     polygon_raster = make_geocube(vector_data=polygon, resolution=(resolution, -resolution))
     polygon_raster = polygon_raster["auxiliary_col"]
@@ -72,7 +73,7 @@ def optimize_coverage(
 
 
 def random_sampling(
-    polygon: gpd.GeoDataFrame, n_points: int = 10, buffer: Optional[float] = None
+    polygon: gpd.GeoDataFrame, n_points: int = 10, min_dist_edges: Optional[float] = None
 ) -> gpd.GeoDataFrame:
     """
     Create a random sampling within a polygon.
@@ -81,17 +82,18 @@ def random_sampling(
     Args:
         polygon (gpd.GeoDataFrame): Polygon to sample.
         n_points (int): Number of sampling points. Defaults to 10.
-        buffer (Optional[float]): Buffer to apply to the polygon before sampling. Using a negative value will
-        shrink the polygon and avoid points very close to polygon edges. Defaults to None.
+        min_dist_edges (Optional[float]): minimum distance to polygon edges. If None, no minimum distance is enforced.
+        It has the same unit as the input data. Defaults to None.
 
     Returns:
         gpd.GeoDataFrame: Sampling points.
     """
     assert len(polygon) == 1, "Only one polygon is allowed"
     assert polygon.crs.is_projected, "CRS must be projected"
+    assert min_dist_edges is None or min_dist_edges >= 0, "min_dist_edges must be None or a positive value"
     # Avoid modifying the input polygon
     polygon = polygon.copy()
     # Apply buffer
-    if buffer is not None:
-        polygon["geometry"] = polygon["geometry"].buffer(buffer)
+    if min_dist_edges is not None:
+        polygon["geometry"] = polygon["geometry"].buffer(-min_dist_edges)
     return polygon.sample_points(size=n_points, method="uniform", rng=0)
