@@ -5,6 +5,8 @@ import numpy as np
 import shapely
 from shapely.geometry import Point
 
+from . import commons
+
 
 def optimized_grid(
     polygon: gpd.GeoSeries,
@@ -29,11 +31,20 @@ def optimized_grid(
     Returns:
         gpd.GeoDataFrame: Grid of points optimized to cover the polygon following the alignment of the longest side.
     """
+    # Multipolygon is converted to polygon if needed by considering only the largest polygon
+    commons.validate_single_polygon(polygon)
+    polygon = polygon.map(commons.multi_polygon_to_polygon)
     angle = _find_polygon_angle(polygon)
     polygon_rotated = polygon.rotate(angle)
     grid_rotated = create_grid(polygon_rotated, points_dist=points_dist)
     grid_rotated_opt = _optimize_grid(
-        grid_rotated, points_dist, polygon_rotated, min_dist_edges, max_offset, n_trials, simplify=simplify
+        grid_rotated,
+        points_dist,
+        polygon_rotated,
+        min_dist_edges,
+        max_offset,
+        n_trials,
+        simplify=simplify,
     )
     grid_opt = _revert_rotation(grid_rotated_opt, angle, polygon)
     return grid_opt
@@ -129,11 +140,15 @@ def _optimize_grid(
 ) -> gpd.GeoDataFrame:
     assert len(polygon) == 1, "The input GeoSeries should contain only one polygon"
     assert grid.crs == polygon.crs, "The grid and the polygon should have the same CRS"
-    assert min_dist_edges is None or min_dist_edges >= 0, "min_dist_edges should be None or a positive value"
+    assert (
+        min_dist_edges is None or min_dist_edges >= 0
+    ), "min_dist_edges should be None or a positive value"
     min_dist_edges = points_dist / 4 if min_dist_edges is None else min_dist_edges
     max_offset = 0.75 * points_dist if max_offset is None else max_offset
 
     polygon_geom = polygon.buffer(-min_dist_edges).iloc[0]
+    # As a buffer operation can potentially create a multipolygon, we need to convert it to a polygon
+    polygon_geom = commons.multi_polygon_to_polygon(polygon_geom)
     polygon_geom_simplified = polygon_geom.simplify(simplify)
     x_coords = grid.geometry.x.values
     y_coords = grid.geometry.y.values

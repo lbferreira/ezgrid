@@ -6,6 +6,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics.pairwise import euclidean_distances
 import geopandas as gpd
 
+from . import commons
+
 
 def optimize_coverage(
     polygon: gpd.GeoDataFrame,
@@ -28,11 +30,14 @@ def optimize_coverage(
     Returns:
         gpd.GeoDataFrame: Sampling points.
     """
-    assert len(polygon) == 1, "Only one polygon is allowed"
-    assert polygon.crs.is_projected, "CRS must be projected"
-    assert min_dist_edges is None or min_dist_edges >= 0, "min_dist_edges must be None or a positive value"
+    commons.validate_single_polygon(polygon)
+    assert (
+        min_dist_edges is None or min_dist_edges >= 0
+    ), "min_dist_edges must be None or a positive value"
     # Avoid modifying the input polygon
     polygon = polygon.copy()
+    # Multipolygon is converted to polygon if needed by considering only the largest polygon
+    polygon = polygon.map(commons.multi_polygon_to_polygon)
     # Prepare input data
     polygon = polygon[["geometry"]]
     polygon["auxiliary_col"] = 1
@@ -88,11 +93,14 @@ def random_sampling(
     Returns:
         gpd.GeoDataFrame: Sampling points.
     """
-    assert len(polygon) == 1, "Only one polygon is allowed"
-    assert polygon.crs.is_projected, "CRS must be projected"
-    assert min_dist_edges is None or min_dist_edges >= 0, "min_dist_edges must be None or a positive value"
+    commons.validate_single_polygon(polygon)
+    assert (
+        min_dist_edges is None or min_dist_edges >= 0
+    ), "min_dist_edges must be None or a positive value"
     # Avoid modifying the input polygon
     polygon = polygon.copy()
+    # Multipolygon is converted to polygon if needed by considering only the largest polygon
+    polygon = polygon.map(commons.multi_polygon_to_polygon)
     # Apply buffer
     if min_dist_edges is not None:
         polygon["geometry"] = polygon["geometry"].buffer(-min_dist_edges)
