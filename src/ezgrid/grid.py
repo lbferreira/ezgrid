@@ -6,6 +6,7 @@ import shapely
 from shapely.geometry import Point
 
 from . import commons
+from .exceptions import GridOptimizationError, GridSpacingError
 
 
 def optimized_grid(
@@ -30,6 +31,10 @@ def optimized_grid(
 
     Returns:
         gpd.GeoDataFrame: Grid of points optimized to cover the polygon following the alignment of the longest side.
+
+    Raises:
+        GridSpacingError: If points_dist is larger than the field width or height.
+        GridOptimizationError: If grid optimization fails to find a suitable solution.
     """
     # Multipolygon is converted to polygon if needed by considering only the largest polygon
     commons.validate_single_polygon(polygon)
@@ -51,7 +56,19 @@ def optimized_grid(
 
 
 def create_grid(polygon: gpd.GeoSeries, points_dist: float) -> gpd.GeoDataFrame:
+    """Create a grid of points within a polygon.
+    If the points_dist is equalt to or larger than the field width or height, GridSpacingError is raised.
+    """
     xmin, ymin, xmax, ymax = polygon.total_bounds
+
+    field_width = xmax - xmin
+    field_height = ymax - ymin
+    # If points_dist is equal to of larger than the field width or height, an exception is raised
+    if points_dist >= field_width or points_dist >= field_height:
+        raise GridSpacingError(
+            f"Grid spacing {points_dist} is larger than the field width {field_width} or height {field_height}."
+        )
+
     x_coords = np.arange(xmin, xmax, points_dist)
     y_coords = np.arange(ymin, ymax, points_dist)
     # Convert to Point objects
@@ -62,8 +79,7 @@ def create_grid(polygon: gpd.GeoSeries, points_dist: float) -> gpd.GeoDataFrame:
 
 def _find_polygon_angle(polygon: gpd.GeoSeries) -> float:
     # Find the largest distance between vertices
-    if len(polygon) > 1:
-        raise ValueError("The input GeoSeries should contain only one polygon")
+    assert len(polygon) == 1, "The input GeoSeries should contain only one polygon"
     rotated_rect = polygon.minimum_rotated_rectangle()
     coords = rotated_rect.iloc[0].exterior.coords.xy
     coords_x = coords[0]
@@ -138,6 +154,9 @@ def _optimize_grid(
     n_trials: int = 200,
     simplify: float = 1,
 ) -> gpd.GeoDataFrame:
+    """Optimize the grid of points to cover the polygon as much as possible.
+    If optimization fails, an exception (GridOptimizationError) is raised.
+    """
     assert len(polygon) == 1, "The input GeoSeries should contain only one polygon"
     assert grid.crs == polygon.crs, "The grid and the polygon should have the same CRS"
     assert (
@@ -173,6 +192,9 @@ def _optimize_grid(
                 min_error = error
                 best_x_offset = x_offset
                 best_y_offset = y_offset
+
+    if best_x_offset is None or best_y_offset is None:
+        raise GridOptimizationError("Grid optimization failed. No best offset found.")
 
     x_coords_opt = x_coords + best_x_offset
     y_coords_opt = y_coords + best_y_offset
